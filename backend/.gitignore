@@ -11,3 +11,4 @@ venv.bak/
 
 chroma/
 data/
+__pycache__/

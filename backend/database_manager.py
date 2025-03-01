@@ -95,14 +95,35 @@ class DocumentProcessor:
     def split_text(self, documents: List[Document]) -> List[Document]:
         """Splits documents into smaller chunks."""
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=600,
-            chunk_overlap=100,
+            chunk_size=100,
+            chunk_overlap=30,
             length_function=len,
             add_start_index=True,
         )
         chunks = text_splitter.split_documents(documents)
         print(f"Split {len(documents)} documents into {len(chunks)} chunks.")
         return chunks
+
+    # def split_text(self, documents: List[Document]) -> List[Document]:
+    #     """Splits documents into smaller chunks dynamically based on total size."""
+    #     total_text_length = sum(len(doc.page_content) for doc in documents)
+    #     target_chunks = 10  # You want around 1/10th of total chunks
+        
+    #     Avoid division by zero
+    #     if target_chunks == 0 or total_text_length == 0:
+    #         return []
+
+    #     chunk_size = max(1, total_text_length // target_chunks)  # Ensure chunk_size is at least 1
+    #     print(total_text_length)
+    #     print(chunk_size)
+    #     chunk_overlap = chunk_size // 6  # Keep overlap proportional
+
+    #     text_splitter = RecursiveCharacterTextSplitter(
+    #         chunk_size=chunk_size,
+    #         chunk_overlap=chunk_overlap,
+    #         length_function=len,
+    #         add_start_index=True,
+    #     )
 
     def process_in_batches(self, chunks: List[Document], batch_size: int):
         """Generator function to process documents in batches."""
@@ -133,6 +154,16 @@ class DocumentProcessor:
         if db:
             db.persist()
             print(f"Successfully saved {len(chunks)} chunks to {persist_directory}.")
+
+    def create_new_notebook_folder_path(self, folder_name: str):
+        data_folder = Path(self.data_path)
+        new_folder_path = data_folder / folder_name
+        new_folder_path.mkdir(parents=True, exist_ok=True)
+        db_folder_path = new_folder_path / "chroma"
+        db_folder_path.mkdir(parents=True, exist_ok=True)
+        # return str(new_folder_path)
+
+        
 
 class QueryEngine:
     def __init__(self):
@@ -191,17 +222,20 @@ Answer:"""
 
 def main():
     # Initialize document processor
-    # processor = DocumentProcessor("data")
+    processor = DocumentProcessor("data")
+    processor.create_new_notebook_folder_path("chroma")
     # documents = processor.load_documents()
     # chunks = processor.split_text(documents)
     # processor.save_to_chroma(chunks, "chroma")
 
     
     # #Example query
-    query_engine = QueryEngine()
-    query_engine.query("What is singleton pattern","chroma")
+    # query_engine = QueryEngine()
+    # query_engine.query("What is adaptor pattern","chroma")
 
 if __name__ == "__main__":
     main()
 
 ##SCALE CHUNK W/ SIZE OF FILE CHUNK/7?
+
+

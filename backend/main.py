@@ -4,9 +4,12 @@ from query_data import query
 from typing import Dict
 from query_data import query  # Ensure query is now async
 import uuid
+from database_manager import DocumentProcessor
 
 
 app = FastAPI()
+
+processor = DocumentProcessor("data")
 
 # Dictionary to store active WebSocket connections
 conversations: Dict[str, Tuple[WebSocket, List[str]]] = {}
@@ -60,6 +63,14 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"Conversation ID generated: {conversation_id}")
     
     await handle_websocket(conversation_id, websocket)
+
+@app.websocket("/create/{notebook_id}")
+async def websocket_endpoint(websocket: WebSocket, notebook_id: str):
+    print(f"New WebSocket connection for notebook: {notebook_id}")
+    await websocket.accept()
+    processor.create_new_notebook_folder_path(notebook_id)
+    print(f"Conversation ID generated: {notebook_id}")
+    
 
 @app.get("/active_conversations")
 async def get_active_conversations():
