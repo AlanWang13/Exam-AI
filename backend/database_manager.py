@@ -95,7 +95,7 @@ class DocumentProcessor:
     def split_text(self, documents: List[Document]) -> List[Document]:
         """Splits documents into smaller chunks."""
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=300,
+            chunk_size=600,
             chunk_overlap=100,
             length_function=len,
             add_start_index=True,
@@ -152,8 +152,22 @@ class QueryEngine:
                 embedding_function=self.embeddings
             )
             
-            docs = db.similarity_search(query, k=3)
-            context = "\n\n".join([doc.page_content for doc in docs])
+            # docs = db.similarity_search(query, k=3)
+            docs = db.similarity_search_with_relevance_scores(query, k=3, score_threshold=0.5)
+        
+            if not docs:
+                print("No documents found with the given relevance score threshold.")
+                return
+            
+            context = "\n\n".join([doc.page_content for doc, score in docs])
+            sources = [f"{doc.metadata.get('source', 'Unknown')} (Page {doc.metadata.get('page', 1) + 1})" for doc, score in docs]            
+            print("DOCS")
+            print(docs)
+            # print(docs.page_content)
+            print("\n\n\n\n\n")
+
+            # context = "\n\n".join([doc.page_content for doc in docs])
+            # sources = [f"{doc.metadata.get('source', 'Unknown')} (Page {doc.metadata.get('page', 1) + 1})" for doc in docs]
             
             prompt = f"""Based on the following context, please answer the question.
             
@@ -167,24 +181,27 @@ Answer:"""
             response = self.llm.invoke(prompt)
             print("\nLLM Response:")
             print(response)
-            
+            print("\nSources:")
+            print(sources)
+            print("\nContext")
+            print(context)
+
         except Exception as e:
             print(f"Error while querying: {e}")
 
 def main():
     # Initialize document processor
-    processor = DocumentProcessor("data")
+    # processor = DocumentProcessor("data")
+    # documents = processor.load_documents()
+    # chunks = processor.split_text(documents)
+    # processor.save_to_chroma(chunks, "chroma")
+
     
-    # Generate vector store
-    documents = processor.load_documents()
-    chunks = processor.split_text(documents)
-    processor.save_to_chroma(chunks, "chroma")
-    
-    # Initialize query engine
-    # query_engine = QueryEngine()
-    
-    # Example query
-    # query_engine.query("What are the main topics covered in these documents?")
+    # #Example query
+    query_engine = QueryEngine()
+    query_engine.query("What is singleton pattern","chroma")
 
 if __name__ == "__main__":
     main()
+
+##SCALE CHUNK W/ SIZE OF FILE CHUNK/7?
