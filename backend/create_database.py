@@ -38,11 +38,11 @@ def load_pdf_file(file_path: str) -> Document:
 def load_documents(data_directory: str):
     documents = []
     valid_extensions = ["*.pdf", "*.md", "*.mdx"]
-    print(f"Checking for documents in: {os.path.abspath(DATA_PATH)}")
+    print(f"Checking for documents in: {os.path.abspath(data_directory)}")
 
     # Loop through each file type
     for ext in valid_extensions:
-        for file_path in Path(DATA_PATH).glob(ext):
+        for file_path in Path(data_directory).glob(ext):
             print(f"Found file: {file_path}")
             try:
                 doc = load_file(str(file_path))
