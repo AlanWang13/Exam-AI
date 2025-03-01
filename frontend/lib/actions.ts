@@ -10,28 +10,30 @@ import {
 } from "@/lib/storage";
 import { Class, Source } from "@/types";
 import { v4 as uuidv4 } from "uuid";
+import WebSocket from "ws";
 
 // ✅ Add a new class
-export async function addClass(title: string): Promise<string> {
-  const classes = await getClasses();
-
-  const newClass: Class = {
-    id: uuidv4(),
-    title,
-    emoji: getRandomEmoji(),
-    createdAt: new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }),
-    sourcesCount: 0,
-  };
-
-  classes.unshift(newClass);
-  saveClasses(classes);
-
-  return newClass.id;
-}
+export async function addClass(title: string): Promise<Class> {
+    const classes = await getClasses();
+  
+    const newClass: Class = {
+      id: uuidv4(),
+      title,
+      emoji: getRandomEmoji(),
+      createdAt: new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }),
+      sourcesCount: 0,
+    };
+  
+    classes.unshift(newClass);
+    saveClasses(classes);
+  
+    // Return the new class data
+    return newClass;
+  }
 
 // ✅ Add a source to a class
 export async function addSource(formData: FormData): Promise<Source> {

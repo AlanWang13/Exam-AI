@@ -17,6 +17,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { addClass } from "@/lib/actions";
+import { useWebSocket } from "@/hooks/websocket-context";
 
 export function CreateClassButton() {
   const [open, setOpen] = useState(false);
@@ -24,21 +25,32 @@ export function CreateClassButton() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const ws = useWebSocket();
 
   const handleCreate = async () => {
     if (!title.trim()) return;
-    
     setIsLoading(true);
     try {
-      const newClassId = await addClass(title);
-      setOpen(false);
+      // Call the server action to add the class.
+      const newClass = await addClass(title);
+      
+      // Use the existing WebSocket connection to notify your FastAPI server.
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const payload = {
+          event: "new_class",
+          data: newClass,
+        };
+        ws.send(JSON.stringify(payload));
+      } else {
+        console.warn("WebSocket connection is not open.");
+      }
+      
       toast({
         title: "Class created",
         description: "Your new class has been created successfully.",
       });
-      router.refresh();
-      // Optionally navigate to the new class
-      router.push(`/class/${newClassId}`);
+      setTitle("");
+      router.push(`/class/${newClass.id}`);
     } catch (error) {
       toast({
         title: "Error",
