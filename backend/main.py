@@ -4,13 +4,15 @@ from query_data import query
 from typing import Dict
 from query_data import query  # Ensure query is now async
 import uuid
-from database_manager import DocumentProcessor
+from database_manager import DocumentProcessor, QueryEngine
 import json
+from pathlib import Path
 
 
 app = FastAPI()
 
 processor = DocumentProcessor("data")
+query_engine = QueryEngine()
 
 # Dictionary to store active WebSocket connections
 conversations: Dict[str, Tuple[WebSocket, List[str]]] = {}
@@ -94,6 +96,34 @@ async def add_source(websocket: WebSocket):
             processor.add_source(f_id, file_path)
 
             await websocket.send_text(f"Source added to {file_path}")
+    except WebSocketDisconnect:
+        print(f"Connection closed.")
+
+@app.websocket("/query/")
+async def query(websocket: WebSocket):
+    await websocket.accept()
+
+    try:
+        id_message = await websocket.receive_text()
+        f_id = json.loads(id_message).get("data")
+        print(f"Received data for {f_id}")
+
+        # First message received should be the file path
+        
+        while True:
+            # Receive data
+            question_message = await websocket.receive_text()
+            question = json.loads(question_message).get("message")
+            print(f"Received file path: {question}")
+
+            #[data]/[id]/[chroma]
+            file_path = (f"data/{f_id}/chroma")
+            
+            # Add source to the notebook
+            query_engine.query(question,file_path)
+            # query_engine.query("What is adaptor pattern","chroma")
+
+            await websocket.send_text(f"Query Sent")
     except WebSocketDisconnect:
         print(f"Connection closed.")
 

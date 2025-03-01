@@ -134,19 +134,23 @@ class DocumentProcessor:
     def save_to_chroma(self, chunks: List[Document], persist_directory: str):
         """Saves document embeddings to ChromaDB with batch processing."""
         if os.path.exists(persist_directory):
-            shutil.rmtree(persist_directory)
+            print(f"Loading existing ChromaDB from {persist_directory}")
+            db = Chroma(
+                persist_directory=persist_directory,
+                embedding_function=self.embeddings
+            )
 
-        db = None
-        total_processed = 0
-
+            # Process documents in batches
         for batch in self.process_in_batches(chunks, MAX_BATCH_SIZE):
             if db is None:
+                # Create a new database if it doesn't exist
                 db = Chroma.from_documents(
                     batch,
                     self.embeddings,
                     persist_directory=persist_directory
                 )
             else:
+                # Add documents to the existing database
                 db.add_documents(batch)
             
             total_processed += len(batch)
@@ -226,21 +230,21 @@ Answer:"""
         except Exception as e:
             print(f"Error while querying: {e}")
 
-def main():
-    # Initialize document processor
-    processor = DocumentProcessor("data")
-    processor.create_new_notebook_folder_path("chroma")
-    # documents = processor.load_documents()
-    # chunks = processor.split_text(documents)
-    # processor.save_to_chroma(chunks, "chroma")
+# def main():
+#     # Initialize document processor
+#     # processor = DocumentProcessor("data")
+#     # processor.create_new_notebook_folder_path("chroma")
+#     # documents = processor.load_documents()
+#     # chunks = processor.split_text(documents)
+#     # processor.save_to_chroma(chunks, "chroma")
 
     
-    # #Example query
-    # query_engine = QueryEngine()
-    # query_engine.query("What is adaptor pattern","chroma")
+#     #Example query
+#     # query_engine = QueryEngine()
+#     # query_engine.query("What is adaptor pattern","chroma")
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
 
 ##SCALE CHUNK W/ SIZE OF FILE CHUNK/7?
 
