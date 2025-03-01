@@ -2,6 +2,8 @@
 # Except this file
 !.gitignore
 .env
+venv/
+.env
 .venv
 env/
 venv/
