@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import WebSocket from "ws";
 
 // ✅ Add a new class
-export async function addClass(title: string): Promise<Class> {
+export async function addClass(title: string): Promise<string> {
     const classes = await getClasses();
   
     const newClass: Class = {
@@ -31,10 +31,25 @@ export async function addClass(title: string): Promise<Class> {
     classes.unshift(newClass);
     saveClasses(classes);
   
-    // Return the new class data
-    return newClass;
+    // Open a WebSocket connection to the /create/{newClass.id} endpoint
+    const ws = new WebSocket(`ws://127.0.0.1:8000/create/${newClass.id}`);
+  
+    ws.on("open", () => {
+      const payload = {
+        event: "new_class",
+        data: newClass,
+      };
+      ws.send(JSON.stringify(payload));
+      ws.close();
+    });
+  
+    ws.on("error", (error) => {
+      console.error("WebSocket error:", error);
+    });
+  
+    return newClass.id;
   }
-
+  
 // ✅ Add a source to a class
 export async function addSource(formData: FormData): Promise<Source> {
   const classId = formData.get("classId") as string;

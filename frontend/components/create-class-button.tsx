@@ -29,28 +29,18 @@ export function CreateClassButton() {
 
   const handleCreate = async () => {
     if (!title.trim()) return;
+    
     setIsLoading(true);
     try {
-      // Call the server action to add the class.
-      const newClass = await addClass(title);
-      
-      // Use the existing WebSocket connection to notify your FastAPI server.
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        const payload = {
-          event: "new_class",
-          data: newClass,
-        };
-        ws.send(JSON.stringify(payload));
-      } else {
-        console.warn("WebSocket connection is not open.");
-      }
-      
+      const newClassId = await addClass(title);
+      setOpen(false);
       toast({
         title: "Class created",
         description: "Your new class has been created successfully.",
       });
-      setTitle("");
-      router.push(`/class/${newClass.id}`);
+      router.refresh();
+      // Optionally navigate to the new class
+      router.push(`/class/${newClassId}`);
     } catch (error) {
       toast({
         title: "Error",
