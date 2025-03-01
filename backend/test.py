@@ -1,11 +1,18 @@
 import websockets
 import asyncio
+import json
 
-FASTAPI_SERVER = "ws://localhost:8000/create/123jhrtgefw4"
+async def send_file_path_and_data():
+    uri = "ws://localhost:8000/add_source/"
+    async with websockets.connect(uri) as websocket:
+    
+        # Send the source data
+        data = "1234"
+        await websocket.send(json.dumps({"data": data}))
 
-async def test_websocket():
-    async with websockets.connect(FASTAPI_SERVER) as ws:
-        print(f"Connected to WebSocket endpoint: {FASTAPI_SERVER}")
+        # Send file path as JSON
+        file_path = "uploads/CS_360_Testing_Handout.pdf"
+        await websocket.send(json.dumps({"file_path": file_path}))
 
-for i in range(1):
-    asyncio.run(test_websocket())
+
+asyncio.run(send_file_path_and_data())

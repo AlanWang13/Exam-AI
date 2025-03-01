@@ -5,6 +5,7 @@ from typing import Dict
 from query_data import query  # Ensure query is now async
 import uuid
 from database_manager import DocumentProcessor
+import json
 
 
 app = FastAPI()
@@ -71,6 +72,30 @@ async def websocket_endpoint(websocket: WebSocket, notebook_id: str):
     processor.create_new_notebook_folder_path(notebook_id)
     print(f"Conversation ID generated: {notebook_id}")
     
+@app.websocket("/add_source/")
+async def add_source(websocket: WebSocket):
+    await websocket.accept()
+
+    try:
+        id_message = await websocket.receive_text()
+        f_id = json.loads(id_message).get("data")
+        print(f"Received data for {f_id}")
+
+        # First message received should be the file path
+        
+        while True:
+            # Receive data
+            file_path_message = await websocket.receive_text()
+            file_path = json.loads(file_path_message).get("file_path")
+            print(f"Received file path: {file_path}")
+
+            
+            # Add source to the notebook
+            processor.add_source(f_id, file_path)
+
+            await websocket.send_text(f"Source added to {file_path}")
+    except WebSocketDisconnect:
+        print(f"Connection closed.")
 
 @app.get("/active_conversations")
 async def get_active_conversations():

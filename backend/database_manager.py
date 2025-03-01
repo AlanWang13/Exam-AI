@@ -44,6 +44,7 @@ class DocumentProcessor:
 
     def load_single_document(self, file_path: Path) -> List[Document]:
         """Loads a single document using the appropriate loader."""
+        file_path = Path(file_path)
         try:
             loader_class = self.get_loader_for_file(file_path)
             
@@ -163,7 +164,12 @@ class DocumentProcessor:
         db_folder_path.mkdir(parents=True, exist_ok=True)
         # return str(new_folder_path)
 
-        
+    def add_source(self, notebook_id, path):
+        new_file_path = f"../frontend/public/{path}"
+        new_folder_path = f"data/{notebook_id}/chroma"
+        documents = self.load_single_document(new_file_path)
+        chunks = self.split_text(documents)
+        self.save_to_chroma(chunks, new_folder_path)
 
 class QueryEngine:
     def __init__(self):
