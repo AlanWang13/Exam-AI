@@ -15,8 +15,8 @@ from pathlib import Path
 load_dotenv()
 
 # Constants
-CHROMA_PATH = "chroma"
-DATA_PATH = "data/"
+# CHROMA_PATH = "chroma"
+# DATA_PATH = "data/dev-docs-mdx"
 MAX_BATCH_SIZE = 160
 
 def load_file(file_path: str) -> Document:
@@ -25,7 +25,17 @@ def load_file(file_path: str) -> Document:
         metadata = {"source": file_path}
         return Document(page_content=content, metadata=metadata)
 
-def load_documents():
+def load_pdf_file(file_path: str) -> Document:
+    with open(file_path, 'rb') as file:
+        reader = PyPDF2.PdfFileReader(file)
+        content = ""
+        for page_num in range(reader.numPages):
+            page = reader.getPage(page_num)
+            content += page.extract_text()
+        metadata = {"source": file_path}
+        return Document(page_content=content, metadata=metadata)
+
+def load_documents(data_directory: str):
     documents = []
     valid_extensions = ["*.pdf", "*.md", "*.mdx"]
     print(f"Checking for documents in: {os.path.abspath(DATA_PATH)}")
@@ -60,10 +70,10 @@ def process_in_batches(chunks: List[Document], batch_size: int):
     for i in range(0, len(chunks), batch_size):
         yield chunks[i:i + batch_size]
 
-def save_to_chroma(chunks: List[Document]):
+def save_to_chroma(chunks: List[Document], persist_directory: str):
     """Saves document embeddings to ChromaDB with batch processing."""
-    if os.path.exists(CHROMA_PATH):
-        shutil.rmtree(CHROMA_PATH)
+    if os.path.exists(persist_directory):
+        shutil.rmtree(persist_directory)
 
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
@@ -77,7 +87,7 @@ def save_to_chroma(chunks: List[Document]):
             db = Chroma.from_documents(
                 batch,
                 embeddings,
-                persist_directory=CHROMA_PATH
+                persist_directory= persist_directory
             )
         else:
             db.add_documents(batch)
@@ -86,7 +96,7 @@ def save_to_chroma(chunks: List[Document]):
         print(f"Processed {total_processed}/{len(chunks)} chunks...")
 
     db.persist()
-    print(f"Successfully saved {len(chunks)} chunks to {CHROMA_PATH}.")
+    print(f"Successfully saved {len(chunks)} chunks to {persist_directory}.")
 
 def query_llm(query: str, collection_name: str = None):
     """Queries GroqCloud's LLM with context from the vector store."""
@@ -125,13 +135,11 @@ Answer:"""
 
 def main():
     generate_data_store()
-    # Example query
-    # query_llm("What is this document about?")
 
 def generate_data_store():
-    documents = load_documents()
+    documents = load_documents("data")
     chunks = split_text(documents)
-    save_to_chroma(chunks)
+    save_to_chroma(chunks,"chroma")
 
 if __name__ == "__main__":
     main()
