@@ -16,10 +16,10 @@ load_dotenv()
 
 # Constants
 CHROMA_PATH = "chroma"
-DATA_PATH = "data/dev-docs-mdx"
+DATA_PATH = "data/"
 MAX_BATCH_SIZE = 160
 
-def load_mdx_file(file_path: str) -> Document:
+def load_file(file_path: str) -> Document:
     with open(file_path, 'r', encoding='utf-8') as file:
         content = file.read()
         metadata = {"source": file_path}
@@ -27,16 +27,22 @@ def load_mdx_file(file_path: str) -> Document:
 
 def load_documents():
     documents = []
-    for file_path in Path(DATA_PATH).glob("*.mdx"):
-        try:
-            doc = load_mdx_file(str(file_path))
-            documents.append(doc)
-            print(f"Loaded: {file_path}")
-        except Exception as e:
-            print(f"Error loading {file_path}: {e}")
-    
-    print(f"Successfully loaded {len(documents)} MDX documents.")
+    valid_extensions = ["*.pdf", "*.md", "*.mdx"]
+    print(f"Checking for documents in: {os.path.abspath(DATA_PATH)}")
+
+    # Loop through each file type
+    for ext in valid_extensions:
+        for file_path in Path(DATA_PATH).glob(ext):
+            print(f"Found file: {file_path}")
+            try:
+                doc = load_file(str(file_path))
+                documents.append(doc)
+            except Exception as e:
+                print(f"Error loading {file_path}: {e}")
+
+    print(f"Successfully loaded {len(documents)} documents.")
     return documents
+
 
 def split_text(documents: List[Document]):
     text_splitter = RecursiveCharacterTextSplitter(
