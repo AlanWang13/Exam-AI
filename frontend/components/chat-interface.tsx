@@ -276,7 +276,7 @@ export function ChatInterface({
                   </div>
                   {message.role === "user" && (
                     <Avatar className="h-8 w-8">
-                      <AvatarFallback>U</AvatarFallback>
+                      <AvatarFallback>K</AvatarFallback>
                     </Avatar>
                   )}
                 </div>
@@ -333,7 +333,7 @@ export function ChatInterface({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="min-h-[60px] resize-none"
+            className="min-h-[20px] resize-none"
             disabled={!isConnected || isLoading}
           />
           <div className="flex flex-col gap-2">
@@ -348,9 +348,7 @@ export function ChatInterface({
                 <Send className="h-4 w-4" />
               )}
             </Button>
-            <Button size="icon" variant="outline">
-              <Save className="h-4 w-4" />
-            </Button>
+          
           </div>
         </div>
         <div className="flex justify-between items-center mt-2">

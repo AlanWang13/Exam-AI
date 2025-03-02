@@ -14,7 +14,7 @@ export default async function Home() {
         <header className="flex justify-between items-center py-6">
           <div className="flex items-center gap-2">
             <BookOpen className="h-8 w-8" />
-            <h1 className="text-2xl font-bold">ExamLM</h1>
+            <h1 className="text-2xl font-bold">ExamAI</h1>
           </div>
           <Button variant="outline" size="icon">
             <Settings className="h-5 w-5" />
@@ -23,7 +23,7 @@ export default async function Home() {
 
         {/* Main content */}
         <div className="py-8">
-          <h1 className="text-4xl font-bold mb-12">Welcome to ExamLM</h1>
+          <h1 className="text-4xl font-bold mb-12">Welcome to ExamAI</h1>
           
           <div className="flex justify-between items-center mb-6">
             <CreateClassButton />

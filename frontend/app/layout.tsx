@@ -8,8 +8,8 @@ import { WebSocketProvider } from '@/hooks/websocket-context';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'ExamLM - AI Exam Creator',
-  description: 'Create exams for your classes with AI assistance',
+  title: 'ExamAI - AI Study Buddy',
+  description: 'Create exams and study guides for your classes with AI assistance',
 };
 
 export default function RootLayout({

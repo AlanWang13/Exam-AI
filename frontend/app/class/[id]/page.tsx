@@ -225,7 +225,12 @@ export default function ClassPage({ params }: ClassPageProps) {
     URL.revokeObjectURL(url);
   };
 
-  if (!classItem) return <div>Loading...</div>; // Prevent rendering before data loads
+  if (!classItem)
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="w-8 h-8 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+    ); // Prevent rendering before data loads
 
   return (
     <div className="flex h-screen bg-background">
@@ -237,7 +242,7 @@ export default function ClassPage({ params }: ClassPageProps) {
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </Link>
-          <h2 className="font-semibold">ExamLM</h2>
+          <h2 className="font-semibold">ExamAI</h2>
         </div>
         <SourceList sources={sources} classId={params.id} />
       </div>
@@ -248,9 +253,7 @@ export default function ClassPage({ params }: ClassPageProps) {
           <div className="flex justify-between items-center p-4 border-b">
             <h2 className="font-semibold">{classItem.title}</h2>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon">
-                <Share className="h-5 w-5" />
-              </Button>
+             
               <Button variant="ghost" size="icon">
                 <Settings className="h-5 w-5" />
               </Button>
