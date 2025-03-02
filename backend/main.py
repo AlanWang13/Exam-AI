@@ -108,26 +108,38 @@ async def query_websocket(websocket: WebSocket):
         f_id = json.loads(id_message).get("data")
         print(f"Received data for {f_id}")
         
+        conversation_id = str(uuid.uuid4())
+        conversations[conversation_id] = (websocket, [])  #
+
         while True:
-            # Receive data
             message = await websocket.receive_text()
             parsed_message = json.loads(message)
             
+
             file_path = f"data/{f_id}/chroma"
             
-            # Check if this is a document generation request or regular query
+            _, history = conversations[conversation_id]
+
+            user_message = parsed_message.get("message", "")
+            history.append(f"User: {user_message}")
+            
+            context = "This is the conversation so far:\n" + "\n".join(history) + "\nNow answer:\n" + user_message
+            
             if "type" in parsed_message and parsed_message["type"] == "generate_document":
                 print(f"Generating document: {parsed_message['document_type']}")
                 response = query_engine.query(parsed_message, file_path)
             else:
-                # Regular query
-                question = parsed_message.get("message", "")
-                print(f"Received query: {question}")
-                response = query_engine.query(question, file_path)
-            print("wd:", response)
+                print(f"Received query: {user_message}")
+                response = query_engine.query(context, file_path)
+
+            history.append(f"Bot: {response}")
+
+            print("Response:", response)
+
             await websocket.send_text(response)
     except WebSocketDisconnect:
         print(f"Connection closed.")
+        del conversations[conversation_id]  # Clean up the conversation history
     except Exception as e:
         print(f"Error in websocket: {e}")
         try:
@@ -137,6 +149,7 @@ async def query_websocket(websocket: WebSocket):
             await websocket.send_text(error_response)
         except:
             pass
+
 @app.get("/active_conversations")
 async def get_active_conversations():
     return {"active_conversations": list(conversations.keys())}

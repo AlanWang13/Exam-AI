@@ -6,5 +6,13 @@
       "type": "pdf",
       "path": "/uploads/CS 360 Reasoning Handout.pdf"
     }
+  ],
+  "bb6dcf44-e8f4-4af7-999b-261fb5e534d7": [
+    {
+      "id": "10770c00-6437-4c16-88db-24df459f6673",
+      "title": "Gang of Four - Design Patterns - Elements of Reusable Object-Oriented Software.pdf",
+      "type": "pdf",
+      "path": "/uploads/Gang of Four - Design Patterns - Elements of Reusable Object-Oriented Software.pdf"
+    }
   ]
 }

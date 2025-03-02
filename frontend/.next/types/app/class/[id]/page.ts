@@ -1,4 +1,4 @@
-// File: /Users/droo/Desktop/github/Exam-AI/frontend/app/class/[id]/page.tsx
+// File: /Users/kylev/github/Exam-AI/frontend/app/class/[id]/page.tsx
 import * as entry from '../../../../../app/class/[id]/page.js'
 import type { ResolvingMetadata } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
