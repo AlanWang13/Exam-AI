@@ -11,6 +11,7 @@ from typing import List, Dict, Callable
 import numpy as np
 from pathlib import Path
 import json
+import re
 
 # Load environment variables
 load_dotenv()
@@ -252,14 +253,19 @@ class QueryEngine:
             "questions": questions[:3]  # Limit to exactly 3 questions
         }
 
+   
     def query(self, query: str, persist_directory: str, collection_name: str = None):
         """Queries GroqCloud's LLM with context from the vector store."""
         try:
+            # Check if this is a document generation request
+            if isinstance(query, dict) and "type" in query and query["type"] == "generate_document":
+                return self.generate_document(query, persist_directory)
+                
+            # Regular query processing
             db = Chroma(
                 persist_directory=persist_directory,
                 embedding_function=self.embeddings
             )
-
             def normalize_scores(results):
                 docs_with_scores = []
                 for doc, score in results:
@@ -285,37 +291,34 @@ class QueryEngine:
             
             context = "\n\n".join([doc.page_content for doc, score in docs])
             sources = [f"{doc.metadata.get('source', 'Unknown')} (Page {doc.metadata.get('page', 1) + 1})" for doc, score in docs]            
-            print("DOCS")
-            print(docs)
-            print("\n\n\n\n\n")
             
             prompt = f"""You are a chatbot to answer questions to help students learn.
-            Based on the following context, please answer the question.
+            Based on the following context, please answer the question. You only help with course material related things.
             
-Context:
-{context}
+    Context:
+    {context}
 
-Question: {query}
+    Question: {query}
 
-Answer:"""
+    Answer:"""
             prompt += '''Generate a response to the following user query in clear and concise language.
 
-Then, create exactly three follow-up questions that help the user can ask the bot again to better understand the topic.
+    Then, create exactly three follow-up questions that help the user can ask the bot again to better understand the topic.
 
-Your response **must** be formatted as **valid JSON** with the **exact** structure shown below and don't add any additional fields:
+    Your response **must** be formatted as **valid JSON** with the **exact** structure shown below and don't add any additional fields:
 
-```json
-{
-  "response": "<your_answer_here>",
-  "questions": [
-    "<follow_up_question_1>",
-    "<follow_up_question_2>",
-    "<follow_up_question_3>"
-  ]
-}
-```
+    ```json
+    {
+    "response": "<your_answer_here>",
+    "questions": [
+        "<follow_up_question_1>",
+        "<follow_up_question_2>",
+        "<follow_up_question_3>"
+    ]
+    }
+    ```
 
-IMPORTANT: Do not include any text, explanations, or content outside of the JSON structure.'''
+    IMPORTANT: Do not include any text, explanations, or content outside of the JSON structure.'''
 
             llm_response = self.llm.invoke(prompt)
             
@@ -350,19 +353,6 @@ IMPORTANT: Do not include any text, explanations, or content outside of the JSON
                     "How can I apply this information?"
                 ]
             
-            # Add sources if you want to include them in the response
-            # response_json["sources"] = sources
-            
-            # Log information for debugging
-            print("\nLLM Response:")
-            print(llm_response.content)
-            print("\nParsed JSON:")
-            print(response_json)
-            print("\nSources:")
-            print(sources)
-            print("\nContext")
-            print(context)
-            
             # Return the guaranteed valid JSON as a string
             return json.dumps(response_json, ensure_ascii=False, indent=2)
 
@@ -376,4 +366,142 @@ IMPORTANT: Do not include any text, explanations, or content outside of the JSON
                     "Would you like to know about something else?",
                     "Can you provide more details about what you're looking for?"
                 ]
+            }, ensure_ascii=False, indent=2)
+
+    def generate_document(self, query_data: dict, persist_directory: str):
+        """Generate study materials based on document type and context."""
+        try:
+            document_type = query_data.get("document_type", "")
+            format_instructions = query_data.get("format", "")
+            class_id = query_data.get("classId", "")
+            
+            # Get context from the vector store
+            db = Chroma(
+                persist_directory=persist_directory,
+                embedding_function=self.embeddings
+            )
+
+            def normalize_scores(results):
+                docs_with_scores = []
+                for doc, score in results:
+                    # Convert cosine similarity to 0-1 range
+                    normalized_score = (score + 1) / 2
+                    docs_with_scores.append((doc, normalized_score))
+                return docs_with_scores
+            
+            # Retrieve relevant documents from the vector store (more context for document generation)
+            try:
+                # Try getting documents with relevance scores
+                raw_results = db.similarity_search_with_relevance_scores(document_type, k=5)
+                docs_with_scores = normalize_scores(raw_results)
+                print(docs_with_scores)
+                
+                # Filter docs with reasonable relevance (above 0.4 normalized score)
+                relevant_docs = [(doc, score) for doc, score in docs_with_scores if score > 0.4]
+                
+                # If no relevant docs found, fall back to regular search
+                if not relevant_docs:
+                    print("No highly relevant documents found, using regular search.")
+                    docs = db.similarity_search(document_type, k=5)
+                    docs_with_scores = [(doc, 0.5) for doc in docs]  # Assign default score
+                else:
+                    docs_with_scores = relevant_docs
+                    
+            except Exception as search_error:
+                print(f"Error during similarity search: {search_error}")
+                # Fall back to regular search without scores
+                docs = db.similarity_search(document_type, k=5)
+                docs_with_scores = [(doc, 0.5) for doc in docs]  # Assign default score
+            
+            # Extract context from documents
+            context = "\n\n".join([doc.page_content for doc, _ in docs_with_scores])
+            
+            # Create prompts based on document type
+            if document_type == "exam":
+                prompt = f"""You are an expert educator tasked with creating an exam for students.
+                
+    Context about the class material:
+    {context}
+
+    Format instructions: {format_instructions}
+
+    Create a comprehensive exam that tests students' understanding of the material. 
+    The exam should include a mix of question types, clear instructions, and be well-structured. You only help with course material related things. Don't talk about grading or anything non-academic related things.
+
+    Include an answer key at the bottom.
+    """
+            elif document_type == "study_guide":
+                prompt = f"""You are an expert educator tasked with creating a study guide for students. You only help with course material related things. Don't talk about grading or anything non-academic related things.
+                
+    Context about the class material:
+    {context}
+
+    Create a comprehensive study guide that includes:
+    1. Key concepts and definitions
+    2. Summary of important topics
+    3. Practice questions with answers
+    4. Study tips and strategies
+    """
+            elif document_type == "briefing":
+                prompt = f"""You are an expert educator tasked with creating a briefing document. You only help with course material related things. Don't talk about grading or anything non-academic related things.
+                
+    Context about the class material:
+    {context}
+
+    Create a concise briefing document that includes:
+    1. Executive summary of the key material
+    2. Main points organized by topic
+    3. Important relationships and connections
+    4. Recommendations for further study
+    """
+            elif document_type == "faq":
+                prompt = f"""You are an expert educator tasked with creating a FAQ document. 
+                
+    Context about the class material:
+    {context}
+
+    Create a comprehensive FAQ document that addresses:
+    1. Common questions students might have
+    2. Misconceptions about the material
+    3. Challenging concepts explained clearly
+    4. Application questions and answers
+    """
+            elif document_type == "timeline":
+                prompt = f"""You are an expert educator tasked with creating a timeline document. You only help with course material related things. Don't talk about grading or anything non-academic related things.
+                
+    Context about the class material:
+    {context}
+
+    Create a chronological timeline that includes:
+    1. Key events or developments
+    2. Important milestones
+    3. How concepts build upon each other
+    4. Context for why each point matters
+    """
+            else:
+                prompt = f"""You are an expert educator tasked with creating educational material. 
+                
+    Context about the class material:
+    {context}
+
+    Create helpful educational content based on this material.
+    """
+            
+            llm_response = self.llm.invoke(prompt)
+            print(llm_response)
+            # Format response as JSON with type and content
+            response_json = {
+                "type": document_type,
+                "content": llm_response.content,
+                "title": f"{document_type.capitalize()} Document"
+            }
+            
+            return json.dumps(response_json, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            print(f"Error generating document: {e}")
+            return json.dumps({
+                "type": query_data.get("document_type", "document"),
+                "content": f"Error generating document: {str(e)}",
+                "title": "Error Document"
             }, ensure_ascii=False, indent=2)

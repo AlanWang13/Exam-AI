@@ -100,33 +100,43 @@ async def add_source(websocket: WebSocket):
         print(f"Connection closed.")
 
 @app.websocket("/query/")
-async def query(websocket: WebSocket):
+async def query_websocket(websocket: WebSocket):
     await websocket.accept()
 
     try:
         id_message = await websocket.receive_text()
         f_id = json.loads(id_message).get("data")
         print(f"Received data for {f_id}")
-
-        # First message received should be the file path
         
         while True:
             # Receive data
-            question_message = await websocket.receive_text()
-            question = json.loads(question_message).get("message")
-            print(f"Received file path: {question}")
-
-            #[data]/[id]/[chroma]
-            file_path = (f"data/{f_id}/chroma")
+            message = await websocket.receive_text()
+            parsed_message = json.loads(message)
             
-            # Add source to the notebook
-            response = query_engine.query(question,file_path)
-            # query_engine.query("What is adaptor pattern","chroma")
-
-            await websocket.send_text(f"{response}")
+            file_path = f"data/{f_id}/chroma"
+            
+            # Check if this is a document generation request or regular query
+            if "type" in parsed_message and parsed_message["type"] == "generate_document":
+                print(f"Generating document: {parsed_message['document_type']}")
+                response = query_engine.query(parsed_message, file_path)
+            else:
+                # Regular query
+                question = parsed_message.get("message", "")
+                print(f"Received query: {question}")
+                response = query_engine.query(question, file_path)
+            print("wd:", response)
+            await websocket.send_text(response)
     except WebSocketDisconnect:
         print(f"Connection closed.")
-
+    except Exception as e:
+        print(f"Error in websocket: {e}")
+        try:
+            error_response = json.dumps({
+                "error": f"An error occurred: {str(e)}"
+            })
+            await websocket.send_text(error_response)
+        except:
+            pass
 @app.get("/active_conversations")
 async def get_active_conversations():
     return {"active_conversations": list(conversations.keys())}

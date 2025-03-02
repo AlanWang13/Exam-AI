@@ -16,6 +16,10 @@ interface ChatInterfaceProps {
   className: string;
   initialMessages?: Message[];
   sourcesCount: number;
+  socket?: WebSocket | null;
+  isConnected?: boolean;
+  onDocumentGenerated?: (documentData: string) => void;
+  isGeneratingDocument?: boolean;
 }
 
 interface ChatResponse {
@@ -27,64 +31,117 @@ export function ChatInterface({
   classId, 
   className,
   initialMessages = [],
-  sourcesCount
+  sourcesCount,
+  socket: externalSocket = null,
+  isConnected: externalIsConnected = false,
+  onDocumentGenerated,
+  isGeneratingDocument
 }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
-  const [socket, setSocket] = useState<WebSocket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [socket, setSocket] = useState<WebSocket | null>(externalSocket);
+  const [isConnected, setIsConnected] = useState(externalIsConnected);
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [sources, setSources] = useState<Array<{title: string; content: string; page?: number}>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Initialize WebSocket connection
-    const ws = new WebSocket(`ws://127.0.0.1:8000/query/`);
     
-    ws.onopen = () => {
-      console.log("WebSocket connection established");
-      setIsConnected(true);
+    if (externalSocket) {
+      console.log("Using external socket");
+      setSocket(externalSocket);
+      setIsConnected(externalIsConnected);
       
-      // Send the classId as the first message
-      ws.send(JSON.stringify({ data: classId }));
-    };
+      // Set up message handler for the external socket
+      externalSocket.onmessage = handleSocketMessage;
+      
+      return;
+    }
     
-    ws.onmessage = (event) => {
-      try {
-        const data = event.data;
-        // First, try to parse as JSON
-        try {
-          const jsonResponse = JSON.parse(data);
-          handleJsonResponse(jsonResponse);
-        } catch (jsonError) {
-          // If not valid JSON, treat as string
-          handleStringResponse(data);
-        }
+    // Only create a new socket if no external socket was provided
+    if (!externalSocket) {
+      // Initialize WebSocket connection
+      const ws = new WebSocket(`ws://127.0.0.1:8000/query/`);
+      
+      ws.onopen = () => {
+        console.log("WebSocket connection established");
+        setIsConnected(true);
+        
+        // Send the classId as the first message
+        ws.send(JSON.stringify({ data: classId }));
+      };
+      
+      ws.onmessage = handleSocketMessage;
+      
+      ws.onclose = () => {
+        console.log("WebSocket connection closed");
+        setIsConnected(false);
+      };
+      
+      ws.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setIsConnected(false);
         setIsLoading(false);
-      } catch (error) {
-        console.error("Error handling WebSocket response:", error);
-        setIsLoading(false);
+      };
+      
+      setSocket(ws);
+      
+      return () => {
+        ws.close();
+      };
+    }
+  }, [classId, externalSocket, externalIsConnected]);
+
+  // Update external socket status when it changes
+  useEffect(() => {
+    if (externalSocket) {
+      setSocket(externalSocket);
+      setIsConnected(externalIsConnected);
+      // Make sure the onmessage handler is attached to the new socket instance
+      externalSocket.onmessage = handleSocketMessage;
+    }
+  }, [externalSocket, externalIsConnected]);
+
+  const handleSocketMessage = (event: MessageEvent) => {
+    try {
+      const data = event.data;
+      console.log("WebSocket message received:", data);
+      
+      // Check if this is a document generation response first
+      // Look for document-specific indicators in the response
+      const isDocumentResponse = (
+        // Check if parent is asking for document generation
+        isGeneratingDocument || 
+        // Or try to detect if the response is a document by examining the data
+        (typeof data === 'string' && (
+          data.includes('# ') || // Markdown headings
+          data.startsWith('{"type":"') || // JSON with type field
+          /^(exam|study_guide|briefing|faq|timeline)/i.test(data) // Starts with document type
+        ))
+      );
+      
+      if (isDocumentResponse && onDocumentGenerated) {
+        console.log("Handling as document generation response");
+        onDocumentGenerated(data);
+        return;
       }
-    };
-    
-    ws.onclose = () => {
-      console.log("WebSocket connection closed");
-      setIsConnected(false);
-    };
-    
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setIsConnected(false);
+      
+      // Otherwise, handle chat messages:
+      // First, try to parse as JSON
+      try {
+        const jsonResponse = JSON.parse(data);
+        handleJsonResponse(jsonResponse);
+      } catch (jsonError) {
+        // If not valid JSON, treat as string
+        handleStringResponse(data);
+      }
       setIsLoading(false);
-    };
-    
-    setSocket(ws);
-    
-    return () => {
-      ws.close();
-    };
-  }, [classId]);
+    } catch (error) {
+      console.error("Error handling WebSocket response:", error);
+      setIsLoading(false);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -95,18 +152,24 @@ export function ChatInterface({
   }, [messages]);
 
   // Handler for the new JSON response format
-  const handleJsonResponse = (response: ChatResponse) => {
-    const aiResponse: Message = {
-      id: Date.now().toString(),
-      content: response.response,
-      role: "assistant",
-      timestamp: new Date().toISOString(),
-    };
-    
-    setMessages((prev) => [...prev, aiResponse]);
-    setSuggestedQuestions(response.questions || []);
-    // Clear sources if not provided in this format
-    setSources([]);
+  const handleJsonResponse = (response: any) => {
+    // Check if this is a chat response or another type of message
+    if (response.response !== undefined) {
+      const aiResponse: Message = {
+        id: Date.now().toString(),
+        content: response.response,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+      };
+      
+      setMessages((prev) => [...prev, aiResponse]);
+      setSuggestedQuestions(response.questions || []);
+      // Clear sources if not provided in this format
+      setSources([]);
+    } else {
+      // Handle other JSON message types
+      console.log("Received JSON message:", response);
+    }
   };
 
   // Handler for the old format or string responses
@@ -139,7 +202,10 @@ export function ChatInterface({
     
     // Send message to WebSocket
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ message: input }));
+      socket.send(JSON.stringify({ 
+        type: "chat_message", 
+        message: input 
+      }));
     } else {
       console.error("WebSocket is not connected");
       setIsLoading(false);
