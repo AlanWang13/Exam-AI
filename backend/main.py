@@ -120,10 +120,10 @@ async def query(websocket: WebSocket):
             file_path = (f"data/{f_id}/chroma")
             
             # Add source to the notebook
-            query_engine.query(question,file_path)
+            response = query_engine.query(question,file_path)
             # query_engine.query("What is adaptor pattern","chroma")
 
-            await websocket.send_text(f"Query Sent")
+            await websocket.send_text(f"{response}")
     except WebSocketDisconnect:
         print(f"Connection closed.")
 

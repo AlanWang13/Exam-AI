@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from typing import List, Dict, Callable
 import numpy as np
 from pathlib import Path
+import json
 
 # Load environment variables
 load_dotenv()
@@ -139,8 +140,12 @@ class DocumentProcessor:
                 persist_directory=persist_directory,
                 embedding_function=self.embeddings
             )
+        else:
+            db = None
 
-            # Process documents in batches
+        total_processed = 0
+
+        # Process documents in batches
         for batch in self.process_in_batches(chunks, MAX_BATCH_SIZE):
             if db is None:
                 # Create a new database if it doesn't exist
@@ -185,32 +190,107 @@ class QueryEngine:
             groq_api_key=os.getenv("GROQ_API_KEY")
         )
 
-    def query(self, query: str,persist_directory: str, collection_name: str = None):
+    def extract_json_from_text(self, text):
+        """Extract JSON from text, even if it's within markdown code blocks"""
+        # Try to find JSON inside ```json ... ``` blocks first
+        json_block_pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
+        json_matches = re.findall(json_block_pattern, text)
+        
+        if json_matches:
+            for json_str in json_matches:
+                try:
+                    return json.loads(json_str)
+                except json.JSONDecodeError:
+                    continue
+        
+        # If no valid JSON in code blocks, try to extract JSON objects directly
+        json_pattern = r"\{[\s\S]*?\}"
+        json_matches = re.findall(json_pattern, text)
+        
+        for json_str in json_matches:
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                continue
+        
+        # If we still don't have valid JSON, create a fallback
+        return self.create_fallback_json(text)
+
+    def create_fallback_json(self, text):
+        """Create a fallback JSON structure when extraction fails"""
+        # Extract potential answer (first paragraph)
+        paragraphs = re.split(r'\n\s*\n', text)
+        response = paragraphs[0] if paragraphs else "Unable to parse response"
+        
+        # Look for potential questions (lines starting with numbers, dashes, or question phrases)
+        question_patterns = [
+            r'\d+\.\s*(.*?)\s*(?:\n|$)',  # "1. Question"
+            r'[-*]\s*(.*?)\s*(?:\n|$)',   # "- Question" or "* Question"
+            r'"([^"]*\?)"',               # "Question?"
+            r'(?:What|How|Why|When|Where|Who|Can|Could|Does|Do|Is|Are)\s+.*?\?'  # Question words
+        ]
+        
+        questions = []
+        for pattern in question_patterns:
+            matches = re.findall(pattern, text)
+            for match in matches:
+                if isinstance(match, tuple):
+                    match = match[0]
+                if match and match not in questions and '?' in match:
+                    questions.append(match)
+                    if len(questions) >= 3:
+                        break
+            if len(questions) >= 3:
+                break
+        
+        # If we couldn't find enough questions, generate placeholder ones
+        while len(questions) < 3:
+            questions.append(f"Can you explain more about this topic?")
+        
+        return {
+            "response": response,
+            "questions": questions[:3]  # Limit to exactly 3 questions
+        }
+
+    def query(self, query: str, persist_directory: str, collection_name: str = None):
         """Queries GroqCloud's LLM with context from the vector store."""
         try:
             db = Chroma(
                 persist_directory=persist_directory,
                 embedding_function=self.embeddings
             )
+
+            def normalize_scores(results):
+                docs_with_scores = []
+                for doc, score in results:
+                    # Convert negative cosine similarity to 0-1 range
+                    normalized_score = (score + 1) / 2
+                    docs_with_scores.append((doc, normalized_score))
+                return docs_with_scores
             
-            # docs = db.similarity_search(query, k=3)
-            docs = db.similarity_search_with_relevance_scores(query, k=3, score_threshold=0.5)
+            raw_results = db.similarity_search_with_relevance_scores(query, k=3)
+            docs = normalize_scores(raw_results)
         
             if not docs:
                 print("No documents found with the given relevance score threshold.")
-                return
+                # Return a default JSON response when no context is found
+                return json.dumps({
+                    "response": "I couldn't find specific information to answer your question. Could you please provide more details or ask a different question?",
+                    "questions": [
+                        "Can you rephrase your question?",
+                        "What specific aspect are you interested in learning about?",
+                        "Would you like information on a related topic instead?"
+                    ]
+                }, ensure_ascii=False, indent=2)
             
             context = "\n\n".join([doc.page_content for doc, score in docs])
             sources = [f"{doc.metadata.get('source', 'Unknown')} (Page {doc.metadata.get('page', 1) + 1})" for doc, score in docs]            
             print("DOCS")
             print(docs)
-            # print(docs.page_content)
             print("\n\n\n\n\n")
-
-            # context = "\n\n".join([doc.page_content for doc in docs])
-            # sources = [f"{doc.metadata.get('source', 'Unknown')} (Page {doc.metadata.get('page', 1) + 1})" for doc in docs]
             
-            prompt = f"""Based on the following context, please answer the question.
+            prompt = f"""You are a chatbot to answer questions to help students learn.
+            Based on the following context, please answer the question.
             
 Context:
 {context}
@@ -218,34 +298,82 @@ Context:
 Question: {query}
 
 Answer:"""
+            prompt += '''Generate a response to the following user query in clear and concise language.
+
+Then, create exactly three follow-up questions that help the user can ask the bot again to better understand the topic.
+
+Your response **must** be formatted as **valid JSON** with the **exact** structure shown below and don't add any additional fields:
+
+```json
+{
+  "response": "<your_answer_here>",
+  "questions": [
+    "<follow_up_question_1>",
+    "<follow_up_question_2>",
+    "<follow_up_question_3>"
+  ]
+}
+```
+
+IMPORTANT: Do not include any text, explanations, or content outside of the JSON structure.'''
+
+            llm_response = self.llm.invoke(prompt)
             
-            response = self.llm.invoke(prompt)
+            # Extract and validate JSON from the response
+            try:
+                # First try direct JSON parsing
+                response_json = json.loads(llm_response.content)
+            except json.JSONDecodeError:
+                # If that fails, use our extraction function
+                response_json = self.extract_json_from_text(llm_response.content)
+            
+            # Ensure the JSON has the expected structure
+            if not isinstance(response_json, dict):
+                response_json = {
+                    "response": "Error parsing response. Please try asking your question again.",
+                    "questions": [
+                        "Could you rephrase your question?",
+                        "What specific information are you looking for?",
+                        "Would you like to explore a different topic?"
+                    ]
+                }
+            
+            # Check for response key (note the field is "response" not "answer" in this case)
+            if "response" not in response_json:
+                response_json["response"] = "The system generated an incomplete response. Please try again."
+            
+            # Check for questions key
+            if "questions" not in response_json or not isinstance(response_json["questions"], list) or len(response_json["questions"]) != 3:
+                response_json["questions"] = [
+                    "Can you tell me more about this topic?",
+                    "What are the key concepts related to this?",
+                    "How can I apply this information?"
+                ]
+            
+            # Add sources if you want to include them in the response
+            # response_json["sources"] = sources
+            
+            # Log information for debugging
             print("\nLLM Response:")
-            print(response)
+            print(llm_response.content)
+            print("\nParsed JSON:")
+            print(response_json)
             print("\nSources:")
             print(sources)
             print("\nContext")
             print(context)
+            
+            # Return the guaranteed valid JSON as a string
+            return json.dumps(response_json, ensure_ascii=False, indent=2)
 
         except Exception as e:
             print(f"Error while querying: {e}")
-
-# def main():
-#     # Initialize document processor
-#     # processor = DocumentProcessor("data")
-#     # processor.create_new_notebook_folder_path("chroma")
-#     # documents = processor.load_documents()
-#     # chunks = processor.split_text(documents)
-#     # processor.save_to_chroma(chunks, "chroma")
-
-    
-#     #Example query
-#     # query_engine = QueryEngine()
-#     # query_engine.query("What is adaptor pattern","chroma")
-
-# if __name__ == "__main__":
-#     main()
-
-##SCALE CHUNK W/ SIZE OF FILE CHUNK/7?
-
-
+            # Return a fallback JSON response in case of any error
+            return json.dumps({
+                "response": f"I encountered an error while processing your question. Please try again later.",
+                "questions": [
+                    "Can you try asking another question?",
+                    "Would you like to know about something else?",
+                    "Can you provide more details about what you're looking for?"
+                ]
+            }, ensure_ascii=False, indent=2)
